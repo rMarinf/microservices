@@ -1,21 +1,28 @@
 import { NestFactory } from '@nestjs/core';
-import { Transport } from '@nestjs/microservices';
+import { ServerRMQ } from "common/custom-transports/rabbitmq.server";
 import { ApplicationModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(ApplicationModule);
 
-  // app.connectMicroservice({
-  //   strategy: new RabbitMQServer('amqp://localhost:5672', 'channel'),
-  // });
+  app.connectMicroservice({
+    strategy: new ServerRMQ({
+      transport: 'RMQ',
+      options: {
+        url: 'amqp://localhost:5672',
+        queue: 'test',
+        queueOptions: { durable: false },
+      },
+    }),
+  });
 
   // CÓDIGO DE CONEXION VIA REDIS
-  app.connectMicroservice({
-   transport: Transport.REDIS,
-   options: {
-     url: 'redis://localhost:6379',
-   },
-  });
+  // app.connectMicroservice({
+  //  transport: Transport.REDIS,
+  //  options: {
+  //    url: 'redis://localhost:6379',
+  //  },
+  // });
 
   // CODIGO DE CONEXIÓN VIA TCP
   // app.connectMicroservice({

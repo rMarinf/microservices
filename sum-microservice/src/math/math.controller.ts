@@ -1,10 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
 import {
   ClientProxy,
-  Client,
-  Transport,
   MessagePattern,
 } from '@nestjs/microservices';
+import { ClientRMQ } from "common/custom-transports/rabbitmq.client";
 import { Observable } from 'rxjs';
 
 interface Mult {
@@ -16,16 +15,23 @@ interface Divide {
 }
 @Controller()
 export class MathController {
-  // client: ClientProxy = new RabbitMQClient('amqp://localhost:5672', 'channel');
+  client: ClientProxy = new ClientRMQ({
+    transport: 'RMQ',
+    options: {
+      url: 'amqp://localhost:5672',
+      queue: 'test',
+      queueOptions: { durable: false },
+    },
+  });
 
   // TODO : CODIGO PARA CONECTARLOS VIA REDIS
-  @Client({
-    transport: Transport.REDIS,
-    options: {
-      url: 'redis://localhost:6379',
-    },
-  })
-  client: ClientProxy;
+  // @Client({
+  //   transport: Transport.REDIS,
+  //   options: {
+  //     url: 'redis://localhost:6379',
+  //   },
+  // })
+  // client: ClientProxy;
 
   // TODO: CODIGO PARA CONECTARLOS VIA TCP
   // @Client({

@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
-import { Client, ClientProxy, MessagePattern, Transport } from '@nestjs/microservices';
+import { ClientProxy, MessagePattern } from '@nestjs/microservices';
+import { ClientRMQ } from "common/custom-transports/rabbitmq.client";
 import { Observable } from 'rxjs';
 
 interface Suma {
@@ -12,16 +13,23 @@ interface Divide {
 
 @Controller()
 export class MathController {
-  // client: ClientProxy = new RabbitMQClient('amqp://localhost:5672', 'channel');
+  client: ClientProxy = new ClientRMQ({
+    transport: 'RMQ',
+    options: {
+      url: 'amqp://localhost:5672',
+      queue: 'test',
+      queueOptions: { durable: false },
+    },
+  });
 
   // CODIGO PARA CONECTARLOS VIA REDIS
-  @Client({
-    transport: Transport.REDIS,
-    options: {
-      url: 'redis://localhost:6379',
-    },
-  })
-  client: ClientProxy;
+  // @Client({
+  //   transport: Transport.REDIS,
+  //   options: {
+  //     url: 'redis://localhost:6379',
+  //   },
+  // })
+  // client: ClientProxy;
 
   // CODIGO PARA CONECTARLOS VIA TCP
   // @Client({
@@ -41,6 +49,7 @@ export class MathController {
 
   @MessagePattern({ cmd: 'sum' })
   sum(data: number[]): Suma {
+    console.log('hola');
     const totalSum = (data || []).reduce((a, b) => a + b);
     return { sum: totalSum };
   }
