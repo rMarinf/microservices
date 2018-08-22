@@ -25,13 +25,13 @@ export interface RmqOptions {
 
 export class ClientRMQ extends ClientProxy {
   private readonly logger = new Logger(ClientProxy.name);
+  private readonly url: string;
+  private readonly queue: string;
+  private readonly prefetchCount: number;
+  private readonly isGlobalPrefetchCount: boolean;
+  private readonly queueOptions: Options.AssertQueue
   private client: Connection = null;
   private channel: Channel = null;
-  private url: string;
-  private queue: string;
-  private prefetchCount: number;
-  private isGlobalPrefetchCount: boolean;
-  private queueOptions: Options.AssertQueue
   private replyQueue: string;
   private responseEmitter: EventEmitter;
 
