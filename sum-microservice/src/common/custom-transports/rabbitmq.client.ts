@@ -26,8 +26,10 @@ export interface RmqOptions {
 export class ClientRMQ extends ClientProxy {
   private readonly logger = new Logger(ClientProxy.name);
   private client: Connection = null;
-  private channel: Channel = null;
+  private publisherChannel: Channel = null;
+  private workerChannel: Channel = null;
   private url: string;
+  private exchange: string = 'delayed-exchange';
   private queue: string;
   private prefetchCount: number;
   private isGlobalPrefetchCount: boolean;
@@ -55,12 +57,14 @@ export class ClientRMQ extends ClientProxy {
     try {
       const correlationId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       this.responseEmitter.on(correlationId, msg => {
+        console.log('[AMQP] Received msg...');
         const { content } = msg;
         this.handleMessage(content, callback);
       });
-      this.channel.sendToQueue(this.queue, Buffer.from(JSON.stringify(messageObj)), {
+      this.publisherChannel.publish(this.exchange, this.queue, Buffer.from(JSON.stringify(messageObj)), {
         replyTo: this.replyQueue,
         correlationId,
+        headers: {'x-delay': 10000 },
       });
     } catch (err) {
       console.log(err);
@@ -87,7 +91,8 @@ export class ClientRMQ extends ClientProxy {
   }
 
   public close(): void {
-    this.channel && this.channel.close();
+    this.publisherChannel && this.publisherChannel.close();
+    this.workerChannel && this.workerChannel.close();
     this.client && this.client.close();
   }
 
@@ -95,26 +100,61 @@ export class ClientRMQ extends ClientProxy {
     client.addListener(ERROR_EVENT, err => this.logger.error(err));
   }
 
+  public async start() {
+    this.client = await connect(this.url);
+    console.log('[AMQP] connected');
+  }
+
+  public async configPublisher() {
+    this.publisherChannel = await this.client.createConfirmChannel();
+    // assert the exchange: 'my-delay-exchange' to be a x-delayed-message,
+    await this.publisherChannel.assertExchange(
+      this.exchange,
+      'x-delayed-message',
+      {autoDelete: false, durable: true, arguments: {'x-delayed-type':  'direct'}})
+    // Bind the queue: "jobs" to the exchnage: "my-delay-exchange" with the binding key "jobs"
+    await this.publisherChannel.bindQueue(this.queue, this.exchange , this.queue);
+    console.log('[AMQP] Publisher is started');
+  }
+
+  public async configWorker() {
+    this.workerChannel = await this.client.createChannel();
+    await this.workerChannel.prefetch(this.prefetchCount, this.isGlobalPrefetchCount);
+    this.replyQueue = (await this.workerChannel.assertQueue(this.queue, { durable: true })).queue;
+    this.listen();
+  }
+
   public listen() {
-    this.channel.consume(this.replyQueue, (msg) => {
+    this.workerChannel.consume(this.replyQueue, (msg) => {
+      console.log('[AMQP] Emit msg...');
       this.responseEmitter.emit(msg.properties.correlationId, msg);
     }, { noAck: true });
   }
 
   public connect(): Promise<any> {
-    if (this.client && this.channel) {
+    if (this.client && this.publisherChannel && this.workerChannel) {
       return Promise.resolve();
     }
+
     return new Promise(async (resolve, reject) => {
-      this.client = await connect(this.url);
-      this.channel = await this.client.createChannel();
-      await this.channel.assertQueue(this.queue, this.queueOptions);
-      await this.channel.prefetch(this.prefetchCount, this.isGlobalPrefetchCount);
-      this.replyQueue = (await this.channel.assertQueue('', { exclusive: true })).queue;
-      this.responseEmitter = new EventEmitter();
-      this.responseEmitter.setMaxListeners(0);
-      this.listen();
-      resolve();
+      try {
+        // Start RabbitMQ
+        await this.start();
+
+        // Config event emitter
+        this.responseEmitter = new EventEmitter();
+        this.responseEmitter.setMaxListeners(0);
+
+        // Config publisher channel
+        await this.configPublisher();
+
+        // Config worker channel
+        await this.configWorker();
+
+        resolve();
+      }catch (e) {
+        reject(e);
+      }
     });
   }
 }
